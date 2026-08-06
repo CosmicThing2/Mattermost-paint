@@ -1,0 +1,13 @@
+# Build output
+/dist/
+/server/dist/
+/webapp/dist/
+
+# Dependencies
+/webapp/node_modules/
+
+# Editors and OS cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/
