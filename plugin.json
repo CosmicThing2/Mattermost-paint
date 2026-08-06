@@ -1,0 +1,55 @@
+{
+    "id": "com.cosmicthing.paint",
+    "name": "Paint",
+    "description": "Annotate photos inside Mattermost: draw, add arrows, text and emoji stickers, then send the edited copy back as a thread reply.",
+    "homepage_url": "https://github.com/CosmicThing2/Mattermost-paint",
+    "support_url": "https://github.com/CosmicThing2/Mattermost-paint/issues",
+    "icon_path": "assets/icon.svg",
+    "min_server_version": "9.5.0",
+    "server": {
+        "executables": {
+            "linux-amd64": "server/dist/plugin-linux-amd64",
+            "linux-arm64": "server/dist/plugin-linux-arm64",
+            "darwin-amd64": "server/dist/plugin-darwin-amd64",
+            "darwin-arm64": "server/dist/plugin-darwin-arm64",
+            "windows-amd64": "server/dist/plugin-windows-amd64.exe"
+        }
+    },
+    "webapp": {
+        "bundle_path": "webapp/dist/main.js"
+    },
+    "settings_schema": {
+        "header": "Paint lets people annotate photos that have been shared in a channel and send the edited copy back as a thread reply.\n\nOn the web and desktop apps a pencil button appears on images. The official mobile apps cannot render plugin interfaces, so mobile users type `/paint` in a channel and follow the private link they get back.",
+        "footer": "",
+        "settings": [
+            {
+                "key": "EnablePreviewOverride",
+                "display_name": "Pencil button in the image preview",
+                "type": "bool",
+                "default": true,
+                "help_text": "Adds a pencil button to the full-screen image preview on web and desktop. Turn this off if you would rather keep Mattermost's stock preview; the 'Annotate image' item in each attachment's ··· menu keeps working either way."
+            },
+            {
+                "key": "LinkExpiryMinutes",
+                "display_name": "Editor link lifetime (minutes)",
+                "type": "number",
+                "default": 30,
+                "help_text": "How long a link handed out by /paint stays usable. Links are single-user and are invalidated once the edited image is sent."
+            },
+            {
+                "key": "MaxImageMB",
+                "display_name": "Maximum edited image size (MB)",
+                "type": "number",
+                "default": 8,
+                "help_text": "Edited images larger than this are rejected. Must also be within the server's own file size limit."
+            },
+            {
+                "key": "SearchDepth",
+                "display_name": "How far back /paint looks",
+                "type": "number",
+                "default": 100,
+                "help_text": "Number of recent posts in the channel that /paint scans for images."
+            }
+        ]
+    }
+}
