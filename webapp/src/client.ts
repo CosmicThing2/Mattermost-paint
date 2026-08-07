@@ -45,7 +45,7 @@ export class PaintClient {
     imageUrl(fileId: string): string {
         const params = new URLSearchParams({file_id: fileId});
         if (this.token) {
-            params.set('t', this.token);
+            params.set('paint_token', this.token);
         }
 
         return `${this.base}/api/v1/image?${params.toString()}`;

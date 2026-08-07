@@ -56,19 +56,48 @@ type caller struct {
 	Session *editSession
 }
 
-// resolveCaller authenticates a request, preferring the Mattermost session so
-// that a logged-in browser is never downgraded to token scope.
+// resolveCaller authenticates a request.
 func (p *Plugin) resolveCaller(r *http.Request) *caller {
-	if userID := r.Header.Get(headerUserID); userID != "" {
-		return &caller{UserID: userID}
+	token := tokenFrom(r)
+
+	return mergeCaller(r.Header.Get(headerUserID), token, p.lookupEditSession(token))
+}
+
+// tokenFrom pulls the bearer token out of a request.
+//
+// The query parameter is spelled out rather than shortened. Privacy-focused
+// browsers strip short, tracker-shaped parameters from URLs, and a token called
+// `t` looks exactly like the ones they are built to remove.
+func tokenFrom(r *http.Request) string {
+	if token := r.Header.Get(headerToken); token != "" {
+		return token
 	}
 
-	token := r.Header.Get(headerToken)
-	if token == "" {
-		token = r.URL.Query().Get("t")
+	query := r.URL.Query()
+	if token := query.Get("paint_token"); token != "" {
+		return token
 	}
 
-	if session := p.lookupEditSession(token); session != nil {
+	// Links handed out by older versions of the plugin.
+	return query.Get("t")
+}
+
+// mergeCaller decides who is asking and, when a /paint link is involved, which
+// file they are allowed to ask about.
+//
+// These are two separate questions and they need two separate answers. A
+// Mattermost session cookie always wins on *identity*, so opening someone
+// else's leaked link in a logged-in browser acts as you, not as them, and the
+// channel permission check that follows is done against you. But the token is
+// the only thing that records *which file* the link was for, so it is kept even
+// when a cookie is present — dropping it there is what left a signed-in browser
+// staring at "no file specified" while a signed-out one worked fine.
+func mergeCaller(sessionUserID, token string, session *editSession) *caller {
+	if sessionUserID != "" {
+		return &caller{UserID: sessionUserID, Token: token, Session: session}
+	}
+
+	if session != nil {
 		return &caller{UserID: session.UserID, Token: token, Session: session}
 	}
 
@@ -380,10 +409,11 @@ func (p *Plugin) handlePublish(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusUnauthorized, "Please sign in to Mattermost first.")
 		return
 	}
-	// Mattermost only sets the user header for a cookie-authenticated request
-	// after its own CSRF checks, but a token caller carries no cookie at all,
-	// so no cross-site request can borrow either credential silently.
-	if c.Session == nil && r.Header.Get("X-Requested-With") != "XMLHttpRequest" {
+	// Required unconditionally. A caller can now hold both a cookie and a token
+	// at once, and making this depend on which credential was used would mean a
+	// token in the URL could waive the CSRF guard on a cookie-authenticated
+	// write. The editor always sends the header, so there is nothing to lose.
+	if r.Header.Get("X-Requested-With") != "XMLHttpRequest" {
 		writeJSONError(w, http.StatusForbidden, "missing X-Requested-With header")
 		return
 	}

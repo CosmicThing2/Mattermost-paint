@@ -121,7 +121,7 @@ function createServer(port) {
         published: () => new Promise((resolve) => {
             onPublish = resolve;
         }),
-        editorUrl: () => `http://localhost:${server.address().port}${BASE}/editor?t=test-token`,
+        editorUrl: () => `http://localhost:${server.address().port}${BASE}/editor?paint_token=test-token&file_id=file123`,
     };
 }
 

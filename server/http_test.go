@@ -7,6 +7,8 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -177,6 +179,90 @@ func TestConfigurationDefaults(t *testing.T) {
 	if clamped.MaxImageMB != defaultMaxImageMB {
 		t.Fatalf("a negative size limit was not replaced: %d", clamped.MaxImageMB)
 	}
+}
+
+func TestTokenFrom(t *testing.T) {
+	newRequest := func(target string, header string) *http.Request {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		if header != "" {
+			request.Header.Set(headerToken, header)
+		}
+		return request
+	}
+
+	cases := []struct {
+		name   string
+		target string
+		header string
+		want   string
+	}{
+		{"header wins", "/editor?paint_token=query", "fromheader", "fromheader"},
+		{"named query parameter", "/editor?paint_token=abc", "", "abc"},
+		{"legacy short parameter still works", "/editor?t=old", "", "old"},
+		{"named parameter beats legacy", "/editor?t=old&paint_token=new", "", "new"},
+		{"nothing at all", "/editor", "", ""},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := tokenFrom(newRequest(testCase.target, testCase.header)); got != testCase.want {
+				t.Fatalf("got %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+// Regression test for signed-in browsers being unable to open /paint links.
+//
+// A browser already logged in to Mattermost sends both a session cookie and the
+// token from the link. Treating the cookie as the whole answer discarded the
+// token, and with it the only record of which file the link was for, so the page
+// failed with "no file specified" — but only for people who happened to be
+// logged in, which made it look like a browser quirk.
+func TestMergeCaller(t *testing.T) {
+	session := &editSession{UserID: "link-owner", FileID: "file-from-link"}
+
+	t.Run("cookie and token together keep both", func(t *testing.T) {
+		got := mergeCaller("signed-in-user", "tok", session)
+
+		if got == nil {
+			t.Fatal("expected a caller")
+		}
+		if got.UserID != "signed-in-user" {
+			t.Fatalf("identity came from the token, not the session: %q", got.UserID)
+		}
+		if got.Session == nil {
+			t.Fatal("the token's file binding was discarded")
+		}
+		if got.effectiveFileID("") != "file-from-link" {
+			t.Fatalf("got file %q, want the one named by the link", got.effectiveFileID(""))
+		}
+	})
+
+	t.Run("token alone acts as its owner", func(t *testing.T) {
+		got := mergeCaller("", "tok", session)
+
+		if got == nil || got.UserID != "link-owner" || got.Session == nil {
+			t.Fatalf("got %+v, want the link owner", got)
+		}
+	})
+
+	t.Run("cookie alone falls back to the requested file", func(t *testing.T) {
+		got := mergeCaller("signed-in-user", "", nil)
+
+		if got == nil || got.UserID != "signed-in-user" {
+			t.Fatalf("got %+v, want the signed-in user", got)
+		}
+		if got.effectiveFileID("requested") != "requested" {
+			t.Fatal("a signed-in caller should be able to name a file")
+		}
+	})
+
+	t.Run("neither credential is not a caller", func(t *testing.T) {
+		if got := mergeCaller("", "", nil); got != nil {
+			t.Fatalf("got %+v, want nil", got)
+		}
+	})
 }
 
 // A caller holding a /paint token must not be able to point it at a different

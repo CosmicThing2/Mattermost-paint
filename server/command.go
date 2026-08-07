@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -98,7 +99,16 @@ func (p *Plugin) buildEditorLink(userID string, fileInfo *model.FileInfo, post *
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/plugins/%s%s?t=%s", siteURL, pluginID, routeEditor, token), nil
+	// The file id rides along as well as the token. If anything between here and
+	// the browser strips the token — a privacy filter, a link rewriter, a chat
+	// client trimming the URL — a signed-in browser can still open the right
+	// image, because the channel permission check does not depend on the token.
+	query := url.Values{
+		"paint_token": {token},
+		"file_id":     {fileInfo.Id},
+	}
+
+	return fmt.Sprintf("%s/plugins/%s%s?%s", siteURL, pluginID, routeEditor, query.Encode()), nil
 }
 
 func (p *Plugin) linkMessage(link string, fileInfo *model.FileInfo, post *model.Post) string {
