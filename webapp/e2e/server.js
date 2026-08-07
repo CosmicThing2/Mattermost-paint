@@ -13,8 +13,6 @@ const SOURCE = sourcePng();
 
 const bootstrap = JSON.stringify({
     pluginBase: BASE,
-    token: 'test-token',
-    fileId: 'file123',
     standalone: true,
 });
 
@@ -30,8 +28,11 @@ const page = `<!doctype html>
 function createServer(port) {
     let onPublish = null;
 
+    const requestedUrls = [];
+
     const server = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://localhost');
+        requestedUrls.push(req.url);
 
         if (url.pathname === '/favicon.ico') {
             res.writeHead(204);
@@ -121,7 +122,9 @@ function createServer(port) {
         published: () => new Promise((resolve) => {
             onPublish = resolve;
         }),
-        editorUrl: () => `http://localhost:${server.address().port}${BASE}/editor?paint_token=test-token&file_id=file123`,
+        // Everything a reverse proxy would have logged.
+        requestedUrls: () => requestedUrls.slice(),
+        editorUrl: () => `http://localhost:${server.address().port}${BASE}/editor#paint_token=test-token&file_id=file123`,
     };
 }
 

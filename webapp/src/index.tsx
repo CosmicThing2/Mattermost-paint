@@ -92,7 +92,7 @@ const EditorHost: React.FC = () => {
                     return {
                         title: context.file_name,
                         subtitle: context.channel_name,
-                        imageUrl: client.imageUrl(fileId),
+                        imageUrl: await client.imageObjectUrl(fileId),
                         mimeType: context.mime_type,
                         maxBytes: context.max_bytes,
                         canPost: context.can_post,

@@ -137,11 +137,26 @@ Worth knowing, since this handles family photos:
 
 * **Every request re-checks channel membership.** Permission is verified against
   Mattermost at the time of the request, not at the time the link was made.
-* **`/paint` links are bearer tokens, and are treated like one.** Each is bound
-  to one user *and* one file, expires (30 minutes by default), is destroyed the
-  moment the edit is sent, and is stripped from the browser's address bar as soon
-  as the page loads. Passing a different file id to a token-authenticated request
-  is rejected rather than honoured.
+* **`/paint` links are bearer tokens, and are treated like one.** Each carries
+  256 bits from `crypto/rand`, is bound to one user *and* one file, expires (30
+  minutes by default), and is destroyed the moment the edit is sent. Passing a
+  different file id to a token-authenticated request is rejected rather than
+  honoured. A leaked link, used inside its window, would let someone view that
+  one image and post one reply in that thread — not read the channel, not reach
+  any other file, and nothing resembling account access.
+* **The token never reaches the server in a URL.** It travels in the URL
+  fragment (after the `#`), which browsers do not transmit, so it cannot land in
+  a reverse proxy's access log, Mattermost's logs, or anything downstream of
+  them. The editor page reads it in JavaScript and sends it on as a header, and
+  strips it from the address bar on load so it does not linger in history. The
+  photo itself is fetched with that header rather than through an `<img src>`,
+  because an image element cannot send headers and the token would otherwise
+  have to go back into the query string. There is a browser test that asserts
+  the token appears in no URL the server ever sees.
+* Because the token is in the fragment, the editor page itself is served without
+  authentication — it has to be, since the server cannot see the credential at
+  page load. The page carries no data. Every request that touches an image
+  authenticates and re-checks channel permissions.
 * **Uploads are validated by decoding them**, not by trusting the declared
   content type. Anything that is not a real PNG or JPEG is refused.
 * **SVG images are not editable** by design — rasterising untrusted SVG in a

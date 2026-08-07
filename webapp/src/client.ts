@@ -40,15 +40,30 @@ export class PaintClient {
         this.token = token;
     }
 
-    /** Image URL for an <img> tag. The token has to travel in the query string
-     *  here, because an image request carries no custom headers. */
-    imageUrl(fileId: string): string {
+    /**
+     * Fetches the image and returns a blob: URL for it.
+     *
+     * Deliberately not a plain `<img src=...>` pointing at the endpoint. An
+     * image element cannot send custom headers, so the token would have to go
+     * in the query string — straight into the server's access log, which is the
+     * one place the fragment scheme is designed to keep it out of. Fetching by
+     * hand keeps the token in a header.
+     *
+     * The caller owns the returned URL and must revokeObjectURL it.
+     */
+    async imageObjectUrl(fileId: string): Promise<string> {
         const params = new URLSearchParams({file_id: fileId});
-        if (this.token) {
-            params.set('paint_token', this.token);
+
+        const response = await fetch(`${this.base}/api/v1/image?${params.toString()}`, {
+            headers: this.headers(),
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            throw new Error(await errorMessage(response));
         }
 
-        return `${this.base}/api/v1/image?${params.toString()}`;
+        return URL.createObjectURL(await response.blob());
     }
 
     async settings(): Promise<PaintSettings> {
@@ -68,7 +83,8 @@ export class PaintClient {
         });
     }
 
-    private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    /** Credentials and the CSRF guard, sent on every request. */
+    private headers(): Record<string, string> {
         const headers: Record<string, string> = {
             // Mattermost accepts this in place of a CSRF token for cookie-authed
             // plugin requests, and the server requires it on writes.
@@ -78,6 +94,13 @@ export class PaintClient {
         if (this.token) {
             headers['X-Paint-Token'] = this.token;
         }
+
+        return headers;
+    }
+
+    private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+        const headers = this.headers();
+
         if (body !== undefined) {
             headers['Content-Type'] = 'application/json';
         }

@@ -149,28 +149,20 @@ func (p *Plugin) authorizeFile(c *caller, fileID string) (*model.FileInfo, *mode
 
 type bootstrap struct {
 	PluginBase string `json:"pluginBase"`
-	Token      string `json:"token"`
-	FileID     string `json:"fileId"`
 	Standalone bool   `json:"standalone"`
 }
 
+// handleEditorPage serves the standalone editor shell.
+//
+// It carries no data and does no authentication, because it cannot: the token
+// is in the URL fragment, which the browser never sends. The page is an empty
+// frame that reads the fragment in JavaScript and authenticates from there, so
+// every request that actually touches an image is still checked — see
+// handleContext, handleImage and handlePublish. Serving the frame to an
+// anonymous request discloses nothing beyond the fact that the plugin exists.
 func (p *Plugin) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	c := p.resolveCaller(r)
-	if c == nil {
-		p.renderMessagePage(w, http.StatusUnauthorized, "This link has expired",
-			"Editor links last a short while and can only be opened by the person who asked for them. "+
-				"Head back to Mattermost and run <code>/paint</code> again.")
-		return
-	}
-
-	fileID := c.effectiveFileID(r.URL.Query().Get("file_id"))
-	if _, _, err := p.authorizeFile(c, fileID); err != nil {
-		p.renderMessagePage(w, http.StatusNotFound, "Image unavailable", template.HTMLEscapeString(err.Error())+".")
 		return
 	}
 
@@ -182,8 +174,6 @@ func (p *Plugin) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(bootstrap{
 		PluginBase: "/plugins/" + pluginID,
-		Token:      c.Token,
-		FileID:     fileID,
 		Standalone: true,
 	})
 	if err != nil {
@@ -194,6 +184,7 @@ func (p *Plugin) handleEditorPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	w.Header().Set("Content-Security-Policy", strings.Join([]string{
 		"default-src 'none'",
 		"img-src 'self' data: blob:",
@@ -238,38 +229,6 @@ var editorPageTemplate = template.Must(template.New("editor").Parse(`<!doctype h
 </html>
 `))
 
-var messagePageTemplate = template.Must(template.New("message").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paint</title>
-<style>
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:#1b1d22;color:#dddfe4;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px}
-div{max-width:26rem;text-align:center}
-h1{font-size:1.25rem;margin:0 0 .5rem}
-p{margin:0;color:#a4a9b7}
-code{background:rgba(255,255,255,.08);padding:.1em .35em;border-radius:4px}
-</style>
-</head>
-<body><div><h1>{{.Title}}</h1><p>{{.Body}}</p></div></body>
-</html>
-`))
-
-func (p *Plugin) renderMessagePage(w http.ResponseWriter, status int, title, body string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-
-	_ = messagePageTemplate.Execute(w, map[string]any{
-		"Title": title,
-		// Body is trusted, short, plugin-authored copy; the only interpolated
-		// part is an error string that the caller has already escaped.
-		"Body": template.HTML(body), //nolint:gosec
-	})
-}
-
 // -- json api -----------------------------------------------------------------
 
 type contextResponse struct {
@@ -296,7 +255,7 @@ func (p *Plugin) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get(headerUserID) == "" {
-		writeJSONError(w, http.StatusUnauthorized, "Please sign in to Mattermost first.")
+		writeJSONError(w, http.StatusUnauthorized, "This editor link has expired, or you are not signed in to Mattermost. Run /paint again to get a new link.")
 		return
 	}
 
@@ -315,7 +274,7 @@ func (p *Plugin) handleContext(w http.ResponseWriter, r *http.Request) {
 
 	c := p.resolveCaller(r)
 	if c == nil {
-		writeJSONError(w, http.StatusUnauthorized, "Please sign in to Mattermost first.")
+		writeJSONError(w, http.StatusUnauthorized, "This editor link has expired, or you are not signed in to Mattermost. Run /paint again to get a new link.")
 		return
 	}
 
@@ -363,7 +322,7 @@ func (p *Plugin) handleImage(w http.ResponseWriter, r *http.Request) {
 
 	c := p.resolveCaller(r)
 	if c == nil {
-		writeJSONError(w, http.StatusUnauthorized, "Please sign in to Mattermost first.")
+		writeJSONError(w, http.StatusUnauthorized, "This editor link has expired, or you are not signed in to Mattermost. Run /paint again to get a new link.")
 		return
 	}
 
@@ -406,7 +365,7 @@ func (p *Plugin) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	c := p.resolveCaller(r)
 	if c == nil {
-		writeJSONError(w, http.StatusUnauthorized, "Please sign in to Mattermost first.")
+		writeJSONError(w, http.StatusUnauthorized, "This editor link has expired, or you are not signed in to Mattermost. Run /paint again to get a new link.")
 		return
 	}
 	// Required unconditionally. A caller can now hold both a cookie and a token

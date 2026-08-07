@@ -4,9 +4,27 @@ import {mountEditor} from './editor/ui';
 
 interface Bootstrap {
     pluginBase: string;
-    token: string;
-    fileId: string;
     standalone: boolean;
+}
+
+/**
+ * Reads the token and file id the link was opened with.
+ *
+ * They live in the URL fragment, which the browser never sends to the server —
+ * that is the whole point, since it keeps the token out of access logs. The
+ * query string is still read as a fallback so that links handed out by earlier
+ * versions of the plugin keep working until they expire.
+ */
+function readLinkParams(): {token: string; fileId: string} {
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const query = new URLSearchParams(window.location.search);
+
+    const pick = (name: string) => fragment.get(name) || query.get(name) || '';
+
+    return {
+        token: pick('paint_token') || query.get('t') || '',
+        fileId: pick('file_id'),
+    };
 }
 
 /**
@@ -33,26 +51,35 @@ function start(): void {
     ensureStyles();
     document.documentElement.classList.add('mmpaint-standalone');
 
-    // The bearer token is in the address bar of whatever browser the mobile app
+    const {token, fileId} = readLinkParams();
+
+    // The credential is in the address bar of whatever browser the mobile app
     // handed this page to. Keep it in memory and drop it from the URL so it does
     // not linger in history or get shared by a stray "copy link".
-    if (window.history.replaceState && window.location.search) {
+    if (window.history.replaceState && (window.location.hash || window.location.search)) {
         window.history.replaceState(null, '', window.location.pathname);
     }
 
-    const client = new PaintClient(bootstrap.pluginBase, bootstrap.token);
+    const client = new PaintClient(bootstrap.pluginBase, token);
     let sentPostId = '';
 
     const handle = mountEditor(root, {
         allowClose: false,
 
         load: async () => {
-            const context = await client.context(bootstrap.fileId);
+            if (!token && !fileId) {
+                throw new Error(
+                    'This editor link is incomplete — it may have been trimmed when it was opened. ' +
+                    'Run /paint again in Mattermost to get a fresh one.',
+                );
+            }
+
+            const context = await client.context(fileId);
 
             return {
                 title: context.file_name,
                 subtitle: subtitleFor(context.channel_name, context.author_name),
-                imageUrl: client.imageUrl(bootstrap.fileId),
+                imageUrl: await client.imageObjectUrl(context.file_id),
                 mimeType: context.mime_type,
                 maxBytes: context.max_bytes,
                 canPost: context.can_post,
@@ -60,7 +87,7 @@ function start(): void {
         },
 
         send: async (dataUrl, message) => {
-            const result = await client.publish(bootstrap.fileId, dataUrl, message);
+            const result = await client.publish(fileId, dataUrl, message);
             sentPostId = result.post_id;
         },
 

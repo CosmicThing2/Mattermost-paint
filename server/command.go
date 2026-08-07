@@ -99,16 +99,25 @@ func (p *Plugin) buildEditorLink(userID string, fileInfo *model.FileInfo, post *
 		return "", err
 	}
 
-	// The file id rides along as well as the token. If anything between here and
-	// the browser strips the token — a privacy filter, a link rewriter, a chat
-	// client trimming the URL — a signed-in browser can still open the right
-	// image, because the channel permission check does not depend on the token.
-	query := url.Values{
-		"paint_token": {token},
-		"file_id":     {fileInfo.Id},
-	}
+	return fmt.Sprintf("%s/plugins/%s%s#%s", siteURL, pluginID, routeEditor, editorFragment(token, fileInfo.Id)), nil
+}
 
-	return fmt.Sprintf("%s/plugins/%s%s?%s", siteURL, pluginID, routeEditor, query.Encode()), nil
+// editorFragment builds the part of the editor URL that goes after the '#'.
+//
+// The token lives in the fragment rather than the query string on purpose.
+// Browsers never transmit a fragment to the server, so the token cannot reach
+// an access log — not the reverse proxy's, not Mattermost's, not any log
+// shipper downstream of them. The editor page reads it in JavaScript and sends
+// it on as a header from there.
+//
+// The file id rides along too, so that if anything strips or mangles the token
+// a signed-in browser can still open the right image; access is decided by the
+// channel permission check, which never depended on the token.
+func editorFragment(token, fileID string) string {
+	return url.Values{
+		"paint_token": {token},
+		"file_id":     {fileID},
+	}.Encode()
 }
 
 func (p *Plugin) linkMessage(link string, fileInfo *model.FileInfo, post *model.Post) string {

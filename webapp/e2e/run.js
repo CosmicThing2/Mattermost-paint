@@ -182,6 +182,16 @@ async function main() {
     check('confirmation links back to the new post',
         (await page.getAttribute('a.mmpaint-button', 'href')) === '/_redirect/pl/newpost456');
 
+    // The point of putting the token in the fragment: it must never reach the
+    // server in a URL, because that is what lands in an access log.
+    const logged = server.requestedUrls();
+    check('token never appears in any URL the server saw',
+        !logged.some((entry) => entry.includes('test-token')),
+        logged.filter((entry) => entry.includes('test-token')).join(' | '));
+    check('the image was fetched without credentials in the URL',
+        logged.some((entry) => entry.includes('/api/v1/image')) &&
+        !logged.some((entry) => entry.includes('/api/v1/image') && entry.includes('paint_token')));
+
     check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
     await browser.close();

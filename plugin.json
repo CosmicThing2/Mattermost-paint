@@ -1,7 +1,7 @@
 {
     "id": "com.cosmicthing.paint",
     "name": "Paint",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Annotate photos inside Mattermost: draw, add arrows, text and emoji stickers, then send the edited copy back as a thread reply.",
     "homepage_url": "https://github.com/CosmicThing2/Mattermost-paint",
     "support_url": "https://github.com/CosmicThing2/Mattermost-paint/issues",

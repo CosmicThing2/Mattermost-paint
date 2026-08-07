@@ -668,12 +668,21 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
         const image = new Image();
 
-        // No crossOrigin attribute on purpose: the image comes from the plugin's
-        // own endpoint on the Mattermost origin, so it loads with the session
-        // cookie and leaves the canvas untainted. Asking for CORS here would
-        // make the request fail, because the endpoint sends no CORS headers.
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('That image could not be loaded.'));
+        // No crossOrigin attribute on purpose: the image is a same-origin blob:
+        // URL, so the canvas stays untainted and can be read back for export.
+        // Asking for CORS here would make the load fail.
+        const done = (settle: () => void) => {
+            // The decoded image is independent of the blob once it has loaded,
+            // so releasing it here keeps the object URL from leaking for as long
+            // as the page is open.
+            if (url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+            settle();
+        };
+
+        image.onload = () => done(() => resolve(image));
+        image.onerror = () => done(() => reject(new Error('That image could not be loaded.')));
         image.src = url;
     });
 }
